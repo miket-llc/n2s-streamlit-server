@@ -35,12 +35,12 @@ services:
     expose:
       - "8501"
 
-  tmmi-tracker:
+  n2s-tmmi-tracker:
     image: python:3.11-slim
-    container_name: streamlit-tmmi-tracker
+    container_name: streamlit-n2s-tmmi-tracker
     working_dir: /app
     volumes:
-      - ./apps/tmmi-tracker:/app
+      - ./apps/n2s-tmmi-tracker:/app
     command: >
       sh -c "pip install -r requirements.txt &&
              streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true"
@@ -51,12 +51,12 @@ services:
     expose:
       - "8501"
 
-  impact-model:
+  n2s-impact-model:
     image: python:3.11-slim
-    container_name: streamlit-impact-model
+    container_name: streamlit-n2s-impact-model
     working_dir: /app
     volumes:
-      - ./apps/impact-model:/app
+      - ./apps/n2s-impact-model:/app
     command: >
       sh -c "pip install -r requirements.txt &&
              streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true"
