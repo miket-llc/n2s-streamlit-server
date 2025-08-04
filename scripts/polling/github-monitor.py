@@ -1,217 +1,208 @@
 #!/usr/bin/env python3
 """
 GitHub Repository Monitor
-Polls GitHub repositories for changes and triggers updates
-Much more secure than push-based webhooks
+Monitors GitHub repositories for changes and updates local containers accordingly.
 """
 
 import json
-import os
 import subprocess
 import time
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
-import requests
-
-# Configuration
-CONFIG_FILE = "/mnt/storage/streamlit-server/config/monitor-config.json"
-LOG_FILE = "/mnt/storage/streamlit-server/logs/github-monitor.log"
-POLL_INTERVAL = 300  # 5 minutes
+import argparse
+import sys
+from pathlib import Path
 
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(LOG_FILE),
+        logging.FileHandler('/mnt/storage/streamlit-server/logs/github-monitor.log'),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
 
-class GitHubMonitor:
-    def __init__(self, config_file: str):
-        self.config_file = config_file
-        self.config = self.load_config()
-        self.last_commits = {}
-        
-    def load_config(self) -> Dict:
-        """Load monitoring configuration"""
-        try:
-            with open(self.config_file, 'r') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            logger.warning(f"Config file {self.config_file} not found, using defaults")
-            return {
-                "repositories": [
-                    {
-                        "name": "n2s-tmmi-tracker",
-                        "owner": "miket-llc",
-                        "branch": "main",
-                        "path": "/mnt/storage/streamlit-server/apps/n2s-tmmi-tracker"
-                    },
-                    {
-                        "name": "n2s-impact-model", 
-                        "owner": "miket-llc",
-                        "branch": "main",
-                        "path": "/mnt/storage/streamlit-server/apps/n2s-impact-model"
-                    }
-                ],
-                "poll_interval": 300,
-                "max_retries": 3
-            }
-    
-    def get_latest_commit(self, owner: str, repo: str, branch: str) -> Optional[Dict]:
-        """Get the latest commit from GitHub API"""
-        url = f"https://api.github.com/repos/{owner}/{repo}/commits/{branch}"
-        
-        try:
-            headers = {}
-            # Add GitHub token if available (for higher rate limits)
-            github_token = os.getenv('GITHUB_TOKEN')
-            if github_token:
-                headers['Authorization'] = f'token {github_token}'
-            
-            response = requests.get(url, headers=headers, timeout=30)
-            response.raise_for_status()
-            
-            commit_data = response.json()
-            return {
-                'sha': commit_data['sha'],
-                'short_sha': commit_data['sha'][:7],
-                'message': commit_data['commit']['message'].split('\n')[0],
-                'author': commit_data['commit']['author']['name'],
-                'date': commit_data['commit']['author']['date']
-            }
-            
-        except requests.RequestException as e:
-            logger.error(f"Failed to get latest commit for {owner}/{repo}: {e}")
-            return None
-    
-    def get_local_commit(self, repo_path: str) -> Optional[str]:
-        """Get the current local commit SHA"""
-        try:
-            result = subprocess.run(
-                ['git', 'rev-parse', 'HEAD'],
-                cwd=repo_path,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            return result.stdout.strip() if result.returncode == 0 else None
-        except subprocess.TimeoutExpired:
-            logger.error(f"Timeout getting local commit for {repo_path}")
-            return None
-        except Exception as e:
-            logger.error(f"Failed to get local commit for {repo_path}: {e}")
-            return None
-    
-    def update_repository(self, repo_config: Dict) -> bool:
-        """Update a repository and restart its container"""
-        repo_name = repo_config['name']
-        repo_path = repo_config['path']
-        
-        logger.info(f"Updating {repo_name}...")
-        
-        try:
-            # Pull latest changes
-            result = subprocess.run(
-                ['git', 'pull', 'origin', repo_config['branch']],
-                cwd=repo_path,
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
-            
-            if result.returncode != 0:
-                logger.error(f"Git pull failed for {repo_name}: {result.stderr}")
-                return False
-            
-            # Restart container
-            subprocess.run([
-                '/mnt/storage/streamlit-server/scripts/webhook/update-app.sh',
-                repo_name
-            ], timeout=120)
-            
-            logger.info(f"Successfully updated {repo_name}")
-            return True
-            
-        except subprocess.TimeoutExpired:
-            logger.error(f"Timeout updating {repo_name}")
-            return False
-        except Exception as e:
-            logger.error(f"Failed to update {repo_name}: {e}")
-            return False
-    
-    def check_repository(self, repo_config: Dict) -> bool:
-        """Check if a repository needs updating"""
-        owner = repo_config['owner']
-        name = repo_config['name']
-        branch = repo_config['branch']
-        path = repo_config['path']
-        
-        # Get remote latest commit
-        latest_commit = self.get_latest_commit(owner, name, branch)
-        if not latest_commit:
-            return False
-        
-        # Get local commit
-        local_commit = self.get_local_commit(path)
-        if not local_commit:
-            logger.warning(f"Could not get local commit for {name}")
-            return False
-        
-        # Check if update needed
-        if latest_commit['sha'] != local_commit:
-            logger.info(f"Update needed for {name}")
-            logger.info(f"  Remote: {latest_commit['short_sha']} - {latest_commit['message']}")
-            logger.info(f"  Local:  {local_commit[:7]}")
-            
-            return self.update_repository(repo_config)
-        else:
-            logger.debug(f"No update needed for {name}")
-            return True
-    
-    def run_once(self):
-        """Run one check cycle"""
-        logger.info("Starting repository check cycle")
-        
-        for repo_config in self.config['repositories']:
-            try:
-                self.check_repository(repo_config)
-            except Exception as e:
-                logger.error(f"Error checking {repo_config['name']}: {e}")
-        
-        logger.info("Repository check cycle complete")
-    
-    def run_continuous(self):
-        """Run continuous monitoring"""
-        logger.info("Starting GitHub repository monitor")
-        logger.info(f"Monitoring {len(self.config['repositories'])} repositories")
-        logger.info(f"Poll interval: {self.config.get('poll_interval', POLL_INTERVAL)} seconds")
-        
-        while True:
-            try:
-                self.run_once()
-                time.sleep(self.config.get('poll_interval', POLL_INTERVAL))
-            except KeyboardInterrupt:
-                logger.info("Stopping monitor")
-                break
-            except Exception as e:
-                logger.error(f"Unexpected error: {e}")
-                time.sleep(60)  # Wait before retrying
+def load_config():
+    """Load configuration from JSON file"""
+    config_path = Path('/mnt/storage/streamlit-server/config/monitor-config.json')
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            logger.info(f"Loaded configuration for {len(config['repositories'])} repositories")
+            return config
+    except Exception as e:
+        logger.error(f"Failed to load configuration: {e}")
+        return None
 
-if __name__ == "__main__":
-    import sys
+def get_remote_commit_hash(repo_path, branch):
+    """Get the latest commit hash from remote"""
+    try:
+        # Fetch latest changes
+        result = subprocess.run(
+            ['git', 'fetch', 'origin'],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            logger.error(f"Git fetch failed: {result.stderr}")
+            return None
+            
+        # Get remote commit hash
+        result = subprocess.run(
+            ['git', 'rev-parse', f'origin/{branch}'],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0:
+            return result.stdout.strip()
+        else:
+            logger.error(f"Failed to get remote commit hash: {result.stderr}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error getting remote commit hash: {e}")
+        return None
+
+def get_local_commit_hash(repo_path, branch):
+    """Get the current local commit hash"""
+    try:
+        result = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0:
+            return result.stdout.strip()
+        else:
+            logger.error(f"Failed to get local commit hash: {result.stderr}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error getting local commit hash: {e}")
+        return None
+
+def update_repository(repo_name, repo_config):
+    """Update a repository and restart its container"""
+    repo_path = Path(repo_config['path'])
     
-    # Ensure directories exist
-    os.makedirs("/mnt/storage/streamlit-server/logs", exist_ok=True)
-    os.makedirs("/mnt/storage/streamlit-server/config", exist_ok=True)
+    if not repo_path.exists():
+        logger.error(f"Repository path does not exist: {repo_path}")
+        return False
     
-    monitor = GitHubMonitor(CONFIG_FILE)
+    try:
+        # Get current local commit
+        local_hash = get_local_commit_hash(repo_path, repo_config['branch'])
+        if not local_hash:
+            logger.error(f"Could not determine local commit for {repo_name}")
+            return False
+        
+        # Get remote commit hash
+        remote_hash = get_remote_commit_hash(repo_path, repo_config['branch'])
+        if not remote_hash:
+            logger.error(f"Could not determine remote commit for {repo_name}")
+            return False
+        
+        # Check if update is needed
+        if local_hash == remote_hash:
+            logger.info(f"No updates for {repo_name} (already at {local_hash[:8]})")
+            return True
+        
+        logger.info(f"Updating {repo_name}: {local_hash[:8]} -> {remote_hash[:8]}")
+        
+        # Force update to remote version (this avoids merge conflicts)
+        result = subprocess.run(
+            ['git', 'reset', '--hard', f'origin/{repo_config["branch"]}'],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        if result.returncode != 0:
+            logger.error(f"Git reset failed for {repo_name}: {result.stderr}")
+            return False
+        
+        logger.info(f"Successfully updated {repo_name} to {remote_hash[:8]}")
+        
+        # Restart container
+        logger.info(f"Restarting container for {repo_name}")
+        result = subprocess.run(
+            ['/mnt/storage/streamlit-server/scripts/webhook/update-app.sh', repo_name],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        if result.returncode == 0:
+            logger.info(f"Successfully restarted container for {repo_name}")
+            return True
+        else:
+            logger.error(f"Failed to restart container for {repo_name}: {result.stderr}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error updating {repo_name}: {e}")
+        return False
+
+def monitor_repositories(config, once=False):
+    """Monitor repositories for changes"""
+    repositories = config['repositories']
+    poll_interval = config.get('poll_interval', 300)  # Default 5 minutes
     
-    if len(sys.argv) > 1 and sys.argv[1] == "--once":
-        monitor.run_once()
-    else:
-        monitor.run_continuous()
+    while True:
+        logger.info("=== Starting repository check ===")
+        
+        for repo in repositories:
+            repo_name = repo['name']
+            logger.info(f"Checking {repo_name}...")
+            
+            try:
+                update_repository(repo_name, repo)
+            except Exception as e:
+                logger.error(f"Error processing {repo_name}: {e}")
+        
+        logger.info("=== Repository check complete ===")
+        
+        if once:
+            break
+            
+        logger.info(f"Waiting {poll_interval} seconds until next check...")
+        time.sleep(poll_interval)
+
+def main():
+    parser = argparse.ArgumentParser(description='GitHub Repository Monitor')
+    parser.add_argument('--once', action='store_true', 
+                       help='Run once and exit (don\'t loop)')
+    args = parser.parse_args()
+    
+    # Ensure log directory exists
+    Path('/mnt/storage/streamlit-server/logs').mkdir(exist_ok=True)
+    
+    # Load configuration
+    config = load_config()
+    if not config:
+        logger.error("Failed to load configuration, exiting")
+        sys.exit(1)
+    
+    logger.info("GitHub Repository Monitor starting...")
+    
+    try:
+        monitor_repositories(config, once=args.once)
+    except KeyboardInterrupt:
+        logger.info("Monitor stopped by user")
+    except Exception as e:
+        logger.error(f"Monitor crashed: {e}")
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()
