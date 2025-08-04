@@ -1,0 +1,73 @@
+name: Deploy Streamlit Server Infrastructure
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'deployment/**'
+      - '.github/workflows/deploy-infrastructure.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+jobs:
+  deploy-terraform:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.6.0
+    
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    
+    - name: Terraform Init
+      working-directory: deployment/terraform
+      run: terraform init
+    
+    - name: Terraform Plan
+      working-directory: deployment/terraform
+      run: |
+        terraform plan \
+          -var="key_name=${{ secrets.AWS_KEY_PAIR_NAME }}" \
+          -var="region=us-east-1" \
+          -out=tfplan
+    
+    - name: Terraform Apply
+      if: github.event.inputs.environment == 'production'
+      working-directory: deployment/terraform
+      run: terraform apply tfplan
+
+  update-server:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Update Running Servers
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.STREAMLIT_SERVER_HOST }}
+        username: ${{ secrets.STREAMLIT_SERVER_USER }}
+        key: ${{ secrets.STREAMLIT_SERVER_SSH_KEY }}
+        script: |
+          cd /opt/streamlit-server
+          git pull origin main
+          docker-compose down
+          docker-compose up -d --build
+          echo "✅ Server updated successfully"
