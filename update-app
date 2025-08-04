@@ -1,0 +1,3 @@
+#!/bin/bash
+# Quick shortcut for manual app updates
+exec /mnt/storage/streamlit-server/scripts/manual-update.sh "$@"

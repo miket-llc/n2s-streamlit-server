@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Streamlit server management script
-# Usage: ./manage-server.sh [start|stop|restart|status|logs]
+# Usage: ./manage-server.sh [start|stop|restart|status|logs|update]
 
 BASE_DIR="/mnt/storage/streamlit-server"
 cd "$BASE_DIR"
@@ -37,14 +37,20 @@ case "$1" in
             docker-compose logs -f
         fi
         ;;
+    update)
+        APP_NAME="$2"
+        echo "🔄 Manual update trigger"
+        "$BASE_DIR/scripts/manual-update.sh" "$APP_NAME"
+        ;;
     *)
-        echo "Usage: $0 [start|stop|restart|status|logs [app-name]]"
+        echo "Usage: $0 [start|stop|restart|status|logs [app-name]|update [app-name|all]]"
         echo ""
         echo "Examples:"
-        echo "  $0 start          # Start the server"
-        echo "  $0 status         # Show running containers"
-        echo "  $0 logs nginx     # Show nginx logs"
-        echo "  $0 logs sample-app # Show sample app logs"
+        echo "  $0 start                    # Start the server"
+        echo "  $0 status                   # Show running containers"
+        echo "  $0 logs nginx               # Show nginx logs"
+        echo "  $0 update n2s-tmmi-tracker # Update specific app"
+        echo "  $0 update all               # Update all apps"
         exit 1
         ;;
 esac
