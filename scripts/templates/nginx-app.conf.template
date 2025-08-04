@@ -1,0 +1,37 @@
+server {
+    listen 80;
+    server_name _;
+    charset utf-8;
+    
+    location = / {
+        return 200 '<!DOCTYPE html>
+<html>
+<head>
+    <title>Streamlit Apps Server</title>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #ff4b4b; text-align: center; }
+        .app-list { list-style: none; padding: 0; }
+        .app-list li { margin: 10px 0; padding: 15px; background: #f0f2f6; border-radius: 4px; }
+        .app-list a { text-decoration: none; color: #262730; font-weight: bold; }
+        .app-list a:hover { color: #ff4b4b; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Streamlit Apps Server</h1>
+        <p>Available Applications:</p>
+        <ul class="app-list">
+            {{APP_LIST}}
+        </ul>
+        <p><small>Add new apps to /mnt/storage/streamlit-server/apps/ and run deploy script</small></p>
+    </div>
+</body>
+</html>';
+        add_header Content-Type "text/html; charset=utf-8";
+    }
+    
+    {{APP_LOCATIONS}}
+}

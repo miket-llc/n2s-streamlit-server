@@ -1,0 +1,24 @@
+[flake8]
+# Modern line length (Black formatter standard)
+max-line-length = 88
+
+# Ignore specific error codes that are too strict for modern development
+ignore = 
+    E203,  # whitespace before ':'
+    E501,  # line too long (handled by max-line-length)
+    W503,  # line break before binary operator
+    E402,  # module level import not at top of file (for conditional imports)
+
+# Exclude common directories
+exclude = 
+    .git,
+    __pycache__,
+    venv,
+    .venv,
+    build,
+    dist,
+    .eggs,
+    *.egg-info
+
+# Maximum complexity (reasonable limit)
+max-complexity = 10 

@@ -1,0 +1,12 @@
+# Apps Directory
+
+This directory contains deployed Streamlit applications.
+
+Each app should be in its own subdirectory with:
+- app.py (or streamlit_app.py)
+- requirements.txt
+- .streamlit/secrets.toml (optional)
+- README.md (optional)
+
+Apps are automatically deployed via GitHub Actions or the deploy scripts.
+

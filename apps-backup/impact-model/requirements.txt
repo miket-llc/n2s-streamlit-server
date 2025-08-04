@@ -1,0 +1,6 @@
+streamlit>=1.32.0
+pandas>=2.0.0
+plotly>=5.15.0
+openpyxl>=3.1.0
+
+# Force complete rebuild - v3.0.1 HOTFIX for import errors on Cloud deployment 

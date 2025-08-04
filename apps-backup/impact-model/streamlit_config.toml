@@ -1,0 +1,26 @@
+[server]
+# Production server configuration
+port = 8501
+address = "0.0.0.0"
+headless = true
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+# Don't auto-open browser on server
+gatherUsageStats = false
+
+[global]
+# Theme configuration
+theme.primaryColor = "#1f77b4"
+theme.backgroundColor = "#ffffff"
+theme.secondaryBackgroundColor = "#f0f2f6"
+theme.textColor = "#262730"
+
+[logger]
+# Logging configuration for production
+level = "info"
+
+[client]
+# Disable telemetry
+showErrorDetails = false 

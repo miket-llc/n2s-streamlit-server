@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: streamlit-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./logs/nginx:/var/log/nginx
+      - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      - streamlit-network
+    restart: unless-stopped
+    runtime: runc
+    depends_on:
+      - sample-app
+
+  sample-app:
+    image: python:3.11-slim
+    container_name: streamlit-sample-app
+    working_dir: /app
+    volumes:
+      - ./apps/sample-app:/app
+    command: >
+      sh -c "pip install streamlit pandas numpy matplotlib seaborn &&
+             streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true"
+    networks:
+      - streamlit-network
+    restart: unless-stopped
+    runtime: runc
+    expose:
+      - "8501"
+
+  tmmi-tracker:
+    image: python:3.11-slim
+    container_name: streamlit-tmmi-tracker
+    working_dir: /app
+    volumes:
+      - ./apps/tmmi-tracker:/app
+    command: >
+      sh -c "pip install -r requirements.txt &&
+             streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true"
+    networks:
+      - streamlit-network
+    restart: unless-stopped
+    runtime: runc
+    expose:
+      - "8501"
+
+  impact-model:
+    image: python:3.11-slim
+    container_name: streamlit-impact-model
+    working_dir: /app
+    volumes:
+      - ./apps/impact-model:/app
+    command: >
+      sh -c "pip install -r requirements.txt &&
+             streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true"
+    networks:
+      - streamlit-network
+    restart: unless-stopped
+    runtime: runc
+    expose:
+      - "8501"
+
+networks:
+  streamlit-network:
+    driver: bridge
+
+volumes:
+  nginx-logs:
